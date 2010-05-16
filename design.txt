@@ -2,7 +2,7 @@ INTRODUCTION
 
 Suxrender is going to be a beam tracer (referred to as cone tracing when the beams are cone-shaped). Beam tracing is an expasion on the raytracing algorithm: In traditional raytracing, the rays have no width, while in beam tracing the rays have a finite width.
 
-In traditional raytracing, effects like antialiasing are achieved by firing multiple rays from one pixel and averaging their results. In beam tracing, a single beam is projected, and the intersection of that beam with various scene objects is calculated in one pass.
+In traditional raytracing, effects like antialiasing are achieved by firing multiple rays from one pixel and averaging their results ("supersampling"). In beam tracing, a single beam is projected, and the intersection of that beam with various scene objects is calculated in one pass.
 
 The current plan is to implement Suxrender in Haskell. It is a high-level language that makes complex algorithms relatively easy to deal with, and has good support for multithreading. I haven't been impressed by what I've seen of its supported libraries; we'll see how that goes.
 
@@ -24,7 +24,7 @@ PRE-RENDERING PASSES
 
 On the first pass, Suxrender will search for polygon-polygon intersections and subdivide polygons along the intersection lines until no such intersections remain. This will allow a modified painter's algorithm to be used for sub-pixel rendering.
 
-Suxrender will then compute a bounding box around the entirety of the scene geometry. A three-dimensional grid will be laid inside this box. Polygons will be subdivided along the lines where they intersect with the planes defined by this grid. Then, each polygon can be assigned to exactly one of the boxes defined by this grid, which will contain it entirely.
+Suxrender will then map the scene geometry via either a kD tree or an octree. For simplicity, I'm thinking that it will make sense to subdivide each polygon to that each fragment fits in exactly one cell. This would eliminate the need to clip polygons during collision detection, but would also eliminate the possibility of using envelopes for optimization. (Researchers suggest that envelopes offer a much greater performance boost for beam tracers than traditional raytracers.)
 
 BEAM TRACING
 
@@ -34,13 +34,13 @@ The intersection of each polygon with the beam is computed, and projected onto t
 
 To compute the actual contribution of each scene geometry polygon, a reverse painter's algorithm is used. An "empty space" polygon is kept, representing the portion of the beam which has not yet intersected an object. The intersection of the scene geometry polygon and the "empty" polygon is found, and its area is recorded and used as a weight to determine that polygon's contribution to the final contribution to the pixel. The intersection is then subtracted from the "empty" polygon. When the "empty" polygon reaches size zero, the beam need not be traced any further.
 
-Note that the above algorithm does not account for transparent objects, and will need to be modified to support them.
+Transparent objects will need to trace their own refraction ray, even if they have a negligible IOR. This simplifies the above algorithm, and avoids making transparent objects into a special case.
 
 For shadow rays, all that is needed is to calculate the percentage of the beam cross-section that is still empty when the light source is reached. If the entire beam is unobstructed, 100% of the light reaches the surface; if the entire beam is blocked, 0% of the light reaches the surface, and so on.
 
 For camera and reflection rays, the percent contribution for each polygon is needed. A weighted average of the polygon colors is used accordingly.
 
-This raises the question of how to calculate the color of a polygon, since we working with a finite intersection, rather than a single point as with traditional raytracing. Since we are operating mostly at the sub-pixel level, any point on the surface contained by the beam should be a reasonable approximation for the entire surface contained by the beam. The simplest solution would be to use one of the vertexes of the polygon formed by the intersection of the scene geometry polygon and the beam. Assuming that this polygon is convex, a purist might be tempted to average the coordinates of all the vertexes to approximate the center of the polygon.
+This raises the question of how to calculate the color of a polygon, since we working with a finite intersection, rather than a single point as with traditional raytracing. For phong shading, any point on the surface contained by the beam should be a reasonable approximation for the entire surface contained by the beam. The simplest solution would be to use one of the vertexes of the polygon formed by the intersection of the scene geometry polygon and the beam. Assuming that this polygon is convex, a purist might be tempted to average the coordinates of all the vertexes to approximate the center of the polygon. Reflections and refractions can be handled by tracing a refletion or refraction beam with a cross-section determined by the impacting camera beam.
 
 SPECIAL EFFECTS
 
@@ -49,3 +49,11 @@ Focal blur can be easily handled by a beam tracer. When viewed from the side, th
 Imperfect (blurred) reflections would also be easy to simulate using beams of various angles.
 
 Global illumination could be handled via path tracing. In this case, it would entail using beams with extremely wide widths to find the environment's contribution to the lighting. Previously it was suggested that any point of a beam-polygon intersection could be used to approximate the entire intersection; that assumption might break down here. I would suggest that the contribution of any single polygon would be so small compared to the others that such erros would still be negligible.
+
+REFERENCES
+
+http://www.cs.cmu.edu/~ph/beam/beam.ps.gz
+http://www.eecs.berkeley.edu/~ravir/beamtrace.pdf
+http://www.cs.virginia.edu/~gfx/Courses/2003/ImageSynthesis/scribed_notes/03_acceleration.pdf
+
+
